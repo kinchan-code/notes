@@ -1,0 +1,3 @@
+Pa Notes — Live deployment (Vercel)
+
+https://notes-psi-eight.vercel.app

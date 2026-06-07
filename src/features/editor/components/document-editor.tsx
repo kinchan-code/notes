@@ -1,16 +1,18 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Underline from '@tiptap/extension-underline'
-import Heading from '@tiptap/extension-heading'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Share2, FileText, Check, Pencil } from 'lucide-react'
 
-import { Button, PermissionBadge } from '@/components/ui'
-
-import { updateDocument, renameDocument } from '@/features/documents/api/actions'
+import { Button, Input, Badge, Separator } from '@/components/ui'
+import { AlertModal } from '@/components/shared/alert-modal'
+import { renameDocument } from '@/features/documents/api/actions'
 import { ShareDialog } from '@/features/sharing/components/share-dialog'
-import { EditorToolbar } from '@/features/editor/components/editor-toolbar'
+import { DocumentReader } from '@/features/editor/components/document-reader'
+import {
+  DocumentEditSurface,
+  type DocumentEditSurfaceHandle,
+} from '@/features/editor/components/document-edit-surface'
 
 import type { Document, DocumentRole } from '@/features/documents/api/actions'
 
@@ -19,58 +21,79 @@ interface DocumentEditorProps {
   role: DocumentRole
 }
 
+const roleBadge: Record<DocumentRole, 'default' | 'secondary' | 'outline'> = {
+  owner: 'default',
+  editor: 'secondary',
+  viewer: 'outline',
+}
+
 export function DocumentEditor({ document, role }: Readonly<DocumentEditorProps>) {
+  const router = useRouter()
+  const editSurfaceRef = useRef<DocumentEditSurfaceHandle>(null)
+  const canEdit = role !== 'viewer'
+
+  const [isEditing, setIsEditing] = useState(false)
+  const [viewHtml, setViewHtml] = useState(document.content_html || '')
   const [title, setTitle] = useState(document.title)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [showShare, setShowShare] = useState(false)
   const [titleError, setTitleError] = useState<string | null>(null)
+  const [isDirty, setIsDirty] = useState(false)
+  const [showDiscardModal, setShowDiscardModal] = useState(false)
 
-  const editable = role !== 'viewer'
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ heading: false }),
-      Underline,
-      Heading.configure({ levels: [1, 2, 3] }),
-    ],
-    content: document.content_html || '',
-    editable,
-    editorProps: {
-      attributes: {
-        class: 'prose prose-sm sm:prose max-w-none focus:outline-none min-h-[400px] px-6 py-4',
-      },
-    },
-  })
+  useEffect(() => {
+    if (!isEditing) return
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (editSurfaceRef.current?.hasUnsavedChanges()) e.preventDefault()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isEditing])
 
   const handleSave = useCallback(async () => {
-    if (!editor) return
+    if (!editSurfaceRef.current) return
     setSaveStatus('saving')
     setSaveError(null)
-
-    const result = await updateDocument(document.id, {
-      content_html: editor.getHTML(),
-      content_text: editor.getText(),
-    })
-
-    if (result.success) {
+    const result = await editSurfaceRef.current.save()
+    if (result.success && result.html !== undefined) {
+      setViewHtml(result.html)
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
     } else {
       setSaveStatus('error')
-      setSaveError(result.error)
+      setSaveError(result.error ?? 'Failed to save.')
     }
-  }, [editor, document.id])
+  }, [])
+
+  function requestExitEdit() {
+    if (editSurfaceRef.current?.hasUnsavedChanges()) {
+      setShowDiscardModal(true)
+      return
+    }
+    setIsEditing(false)
+    setSaveStatus('idle')
+    setSaveError(null)
+  }
+
+  function confirmDiscard() {
+    editSurfaceRef.current?.resetContent(viewHtml)
+    setShowDiscardModal(false)
+    setIsEditing(false)
+    setIsDirty(false)
+    setSaveStatus('idle')
+    setSaveError(null)
+  }
 
   async function handleRename() {
+    if (!isEditing || role !== 'owner') return
+    if (title.trim() === document.title) return
     setTitleError(null)
     if (!title.trim()) {
       setTitleError('Title cannot be empty.')
       setTitle(document.title)
       return
     }
-    if (title.trim() === document.title) return
-
     const result = await renameDocument(document.id, title)
     if (!result.success) {
       setTitleError(result.error)
@@ -78,64 +101,175 @@ export function DocumentEditor({ document, role }: Readonly<DocumentEditorProps>
     }
   }
 
-  return (
-    <div className="flex h-screen flex-col bg-gray-50">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
-        <div className="flex items-center gap-3">
-          <a href="/dashboard" className="text-sm text-gray-500 hover:text-gray-700">← Dashboard</a>
-          <div>
-            {role === 'owner' ? (
-              <input
-                type="text"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                onBlur={handleRename}
-                onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
-                className="rounded border border-transparent px-2 py-1 text-lg font-semibold text-gray-900 hover:border-gray-300 focus:border-violet-400 focus:outline-none"
-              />
-            ) : (
-              <span className="px-2 py-1 text-lg font-semibold text-gray-900">{title}</span>
-            )}
-            {titleError && <p className="text-xs text-red-600">{titleError}</p>}
-          </div>
-          <PermissionBadge role={role} />
-        </div>
+  function renderSaveStatus() {
+    if (!isEditing) return null
+    if (saveStatus === 'saving') {
+      return <span className="text-xs text-muted-foreground">Saving…</span>
+    }
+    if (saveStatus === 'saved') {
+      return (
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Check className="h-3.5 w-3.5" /> Saved
+        </span>
+      )
+    }
+    if (saveStatus === 'error') {
+      return (
+        <span className="max-w-32 truncate text-xs text-destructive sm:max-w-none">
+          {saveError}
+        </span>
+      )
+    }
+    return null
+  }
 
-        <div className="flex items-center gap-2">
-          {saveStatus === 'saving' && <span className="text-sm text-gray-400">Saving…</span>}
-          {saveStatus === 'saved' && <span className="text-sm text-green-600">Saved</span>}
-          {saveStatus === 'error' && <span className="text-sm text-red-600">{saveError}</span>}
-
-          {editable && (
-            <Button onClick={handleSave} disabled={saveStatus === 'saving'}>
-              Save
-            </Button>
-          )}
-
+  function renderActions(compact: boolean) {
+    if (isEditing) {
+      return (
+        <>
+          {renderSaveStatus()}
+          <Button size="sm" variant="outline" onClick={requestExitEdit}>
+            Done
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saveStatus === 'saving' || !isDirty}>
+            Save
+          </Button>
           {role === 'owner' && (
-            <Button variant="secondary" onClick={() => setShowShare(true)}>
+            compact ? (
+              <Button
+                size="icon-sm"
+                variant="outline"
+                aria-label="Share document"
+                onClick={() => setShowShare(true)}
+              >
+                <Share2 className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setShowShare(true)}>
+                <Share2 className="h-3.5 w-3.5" />
+                Share
+              </Button>
+            )
+          )}
+        </>
+      )
+    }
+
+    return (
+      <>
+        {canEdit && (
+          <Button size="sm" onClick={() => setIsEditing(true)}>
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </Button>
+        )}
+        {role === 'owner' && (
+          compact ? (
+            <Button
+              size="icon-sm"
+              variant="outline"
+              aria-label="Share document"
+              onClick={() => setShowShare(true)}
+            >
+              <Share2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setShowShare(true)}>
+              <Share2 className="h-3.5 w-3.5" />
               Share
             </Button>
+          )
+        )}
+      </>
+    )
+  }
+
+  return (
+    <div className="flex h-svh flex-col bg-background">
+      <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-sm supports-backdrop-filter:bg-background/60">
+        <div className="space-y-2 px-4 py-2.5 sm:space-y-0">
+          <div className="flex items-center justify-between sm:hidden">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Back to dashboard"
+              onClick={() => router.push('/dashboard')}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex items-center gap-1.5">{renderActions(true)}</div>
+          </div>
+
+          <div className="flex min-w-0 items-center gap-2 sm:justify-between">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hidden shrink-0 gap-1.5 sm:inline-flex"
+                onClick={() => router.push('/dashboard')}
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Dashboard
+              </Button>
+
+              <Separator orientation="vertical" className="hidden h-5 shrink-0 sm:block" />
+
+              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              {isEditing && role === 'owner' ? (
+                <Input
+                  value={title}
+                  onChange={e => { setTitle(e.target.value); setTitleError(null) }}
+                  onBlur={handleRename}
+                  onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()}
+                  className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-2 font-semibold shadow-none focus-visible:border-input sm:max-w-xs sm:flex-none"
+                />
+              ) : (
+                <h1 className="min-w-0 flex-1 truncate text-sm font-semibold sm:text-base">{title}</h1>
+              )}
+              <Badge variant={roleBadge[role]} className="shrink-0 text-[10px] capitalize sm:text-xs">
+                {role}
+              </Badge>
+            </div>
+
+            <div className="hidden shrink-0 items-center gap-2 sm:flex">
+              {renderActions(false)}
+            </div>
+          </div>
+
+          {titleError && (
+            <p className="text-xs text-destructive sm:pl-30">{titleError}</p>
           )}
         </div>
       </header>
 
-      {editable && editor && <EditorToolbar editor={editor} />}
-
       <main className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-3xl bg-white shadow-sm mt-6 mb-10 rounded-lg border border-gray-200">
-          {!editable && (
-            <div className="rounded-t-lg bg-amber-50 px-6 py-2 text-sm text-amber-700 border-b border-amber-200">
-              You have view-only access to this document.
-            </div>
+        <div className="mx-4 my-4 rounded-lg border bg-card shadow-sm sm:mx-auto sm:my-8 sm:max-w-3xl sm:rounded-xl">
+          {isEditing && canEdit ? (
+            <DocumentEditSurface
+              ref={editSurfaceRef}
+              documentId={document.id}
+              contentHtml={viewHtml}
+              onDirtyChange={setIsDirty}
+            />
+          ) : (
+            <DocumentReader html={viewHtml} />
           )}
-          <EditorContent editor={editor} />
         </div>
       </main>
 
       {showShare && (
         <ShareDialog documentId={document.id} onClose={() => setShowShare(false)} />
       )}
+
+      <AlertModal
+        open={showDiscardModal}
+        onOpenChange={open => { if (!open) setShowDiscardModal(false) }}
+        title="Discard unsaved changes?"
+        description="You have unsaved edits. Leave edit mode without saving?"
+        confirmLabel="Discard"
+        confirmVariant="destructive"
+        onConfirm={confirmDiscard}
+      />
     </div>
   )
 }

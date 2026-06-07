@@ -1,17 +1,25 @@
-import { cn } from '@/lib/utils'
+"use client"
 
-interface LabelProps extends React.LabelHTMLAttributes<HTMLLabelElement> {
-  required?: boolean
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+type LabelProps = React.ComponentProps<"label"> & {
+  htmlFor: string
 }
 
-export function Label({ required, className, children, ...props }: Readonly<LabelProps>) {
+function Label({ className, htmlFor, ...props }: LabelProps) {
   return (
     <label
-      className={cn('block text-sm font-medium text-gray-700', className)}
+      htmlFor={htmlFor}
+      data-slot="label"
+      className={cn(
+        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+        className
+      )}
       {...props}
-    >
-      {children}
-      {required && <span className="ml-1 text-red-500">*</span>}
-    </label>
+    />
   )
 }
+
+export { Label }

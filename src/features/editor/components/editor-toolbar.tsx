@@ -1,6 +1,18 @@
 'use client'
 
-import type { Editor } from '@tiptap/react'
+import { useEditorState, type Editor } from '@tiptap/react'
+import {
+  Bold,
+  Italic,
+  Underline,
+  Heading1,
+  Heading2,
+  Heading3,
+  List,
+  ListOrdered,
+} from 'lucide-react'
+
+import { Button, Separator } from '@/components/ui'
 
 interface ToolbarButtonProps {
   onClick: () => void
@@ -11,76 +23,108 @@ interface ToolbarButtonProps {
 
 function ToolbarButton({ onClick, active, label, children }: Readonly<ToolbarButtonProps>) {
   return (
-    <button
+    <Button
+      type="button"
+      variant={active ? 'secondary' : 'ghost'}
+      size="sm"
       onMouseDown={e => { e.preventDefault(); onClick() }}
       aria-label={label}
-      title={label}
-      className={`rounded px-2 py-1 text-sm font-medium transition-colors ${
-        active ? 'bg-violet-100 text-violet-700' : 'text-gray-600 hover:bg-gray-100'
-      }`}
+      aria-pressed={active}
+      className="h-8 w-8 p-0"
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
 export function EditorToolbar({ editor }: Readonly<{ editor: Editor }>) {
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: currentEditor }) => ({
+      bold: currentEditor.isActive('bold'),
+      italic: currentEditor.isActive('italic'),
+      underline: currentEditor.isActive('underline'),
+      h1: currentEditor.isActive('heading', { level: 1 }),
+      h2: currentEditor.isActive('heading', { level: 2 }),
+      h3: currentEditor.isActive('heading', { level: 3 }),
+      bulletList: currentEditor.isActive('bulletList'),
+      orderedList: currentEditor.isActive('orderedList'),
+    }),
+  })
+
+  if (!state) return null
+
   return (
-    <div className="flex flex-wrap gap-1 border-b border-gray-200 bg-white px-3 py-2">
+    <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
+      <div className="flex w-max min-w-full items-center gap-0.5 sm:w-auto sm:flex-wrap">
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBold().run()}
-        active={editor.isActive('bold')}
+          active={state.bold}
         label="Bold"
       >
-        <strong>B</strong>
+          <Bold className="h-4 w-4" />
       </ToolbarButton>
 
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleItalic().run()}
-        active={editor.isActive('italic')}
+          active={state.italic}
         label="Italic"
       >
-        <em>I</em>
+          <Italic className="h-4 w-4" />
       </ToolbarButton>
 
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleUnderline().run()}
-        active={editor.isActive('underline')}
+          active={state.underline}
         label="Underline"
       >
-        <span className="underline">U</span>
+          <Underline className="h-4 w-4" />
+        </ToolbarButton>
+
+        <Separator orientation="vertical" className="mx-1 h-6" />
+
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          active={state.h1}
+          label="Heading 1"
+        >
+          <Heading1 className="h-4 w-4" />
       </ToolbarButton>
 
-      <div className="mx-1 w-px bg-gray-200" />
-
-      {([1, 2, 3] as const).map(level => (
         <ToolbarButton
-          key={level}
-          onClick={() => editor.chain().focus().toggleHeading({ level }).run()}
-          active={editor.isActive('heading', { level })}
-          label={`Heading ${level}`}
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          active={state.h2}
+          label="Heading 2"
         >
-          H{level}
+          <Heading2 className="h-4 w-4" />
         </ToolbarButton>
-      ))}
 
-      <div className="mx-1 w-px bg-gray-200" />
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+          active={state.h3}
+          label="Heading 3"
+        >
+          <Heading3 className="h-4 w-4" />
+        </ToolbarButton>
+
+        <Separator orientation="vertical" className="mx-1 h-6" />
 
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleBulletList().run()}
-        active={editor.isActive('bulletList')}
+          active={state.bulletList}
         label="Bullet list"
       >
-        • List
+          <List className="h-4 w-4" />
       </ToolbarButton>
 
       <ToolbarButton
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        active={editor.isActive('orderedList')}
+          active={state.orderedList}
         label="Numbered list"
       >
-        1. List
+          <ListOrdered className="h-4 w-4" />
       </ToolbarButton>
+      </div>
     </div>
   )
 }

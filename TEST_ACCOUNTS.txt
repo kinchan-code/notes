@@ -1,0 +1,18 @@
+Pa Notes — Test accounts for sharing demo
+
+Seeded per supabase/seed.sql — create both users in Supabase Auth, then run the seed script for profiles.
+
+User A (document owner)
+  Email:        alice@example.com
+  Display name: Alice Owner
+  Password:     password123
+
+User B (shared user)
+  Email:        bob@example.com
+  Display name: Bob Shared User
+  Password:     password123
+
+Demo flow for reviewers:
+  1. Sign in as Alice → New Document → add content → Save
+  2. Share → enter bob@example.com → role: Editor or Viewer
+  3. Sign out → Sign in as Bob → Shared With Me → open document
