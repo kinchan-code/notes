@@ -2,6 +2,7 @@
 -- Pa Notes — Seed Script
 -- NOTE: Create alice@example.com and bob@example.com in the
 -- Supabase Auth dashboard first (Authentication > Users > Add user).
+-- Use password: password123 for both demo accounts.
 -- Then run this script to ensure their profiles exist.
 -- ============================================================
 

@@ -69,7 +69,10 @@ export async function createDocument(): Promise<void> {
     .select('id')
     .single()
 
-  if (error || !data) redirect('/dashboard')
+  if (error || !data) {
+    console.error('createDocument error:', JSON.stringify(error))
+    redirect('/dashboard')
+  }
   redirect(`/documents/${data.id}`)
 }
 

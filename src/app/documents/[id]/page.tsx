@@ -7,9 +7,9 @@ import { DocumentEditor } from '@/features/editor'
 
 export default async function DocumentPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ id: string }>
-}) {
+}>) {
   const { id } = await params
 
   const supabase = await createClient()
@@ -27,5 +27,5 @@ export default async function DocumentPage({
 
   if (!doc) notFound()
 
-  return <DocumentEditor document={doc} role={role} />
+  return <DocumentEditor key={`${doc.id}-${doc.updated_at}`} document={doc} role={role} />
 }
